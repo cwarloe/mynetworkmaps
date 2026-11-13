@@ -146,4 +146,4 @@ pytest
 
 ## Licenses
 
-See [LICENSES.md](LICENSES.md). The icons are original generic drawings, not vendor stencils.
+netdiag is free to use, change and share for any noncommercial purpose under the [PolyForm Noncommercial License 1.0.0](LICENSE). Selling it or using it in a commercial product needs a separate license; open an issue on this repo to ask. Third-party components are listed in [LICENSES.md](LICENSES.md). The icons are original generic drawings, not vendor stencils.

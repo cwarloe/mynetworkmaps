@@ -57,3 +57,15 @@ def test_links_are_never_invented(samples):
         if r.connected_to:
             declared.add(frozenset([(r.name, r.local_port or r.interface), (r.connected_to, r.remote_port)]))
     assert len(topo.links) == len(declared) == 19
+
+
+def test_reciprocal_local_port_without_interface_is_checked(tmp_path):
+    p = tmp_path / "mismatch.csv"
+    p.write_text(
+        "name,role,address,interface,vlan,connected_to,local_port,remote_port\n"
+        "A,core,10.0.0.1/30,,,B,p1,p2\n"
+        "B,core,10.0.1.1/30,,,A,p2,p1\n",
+        encoding="utf-8",
+    )
+    findings = validate(load_csv(p))
+    assert any(f.code == "outside-subnet" and "not in one subnet" in f.message for f in findings)

@@ -88,7 +88,7 @@ class Device:
         if not port:
             return None
         for r in self.rows:
-            if r.interface == port:
+            if (r.local_port or r.interface) == port:
                 return r
         return None
 

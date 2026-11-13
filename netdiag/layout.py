@@ -325,9 +325,9 @@ def layout(topo: Topology, title: str = "") -> Scene:
             it.w = max(it.w, need)
 
     # ---- separations between neighbours in each row -------------------------
-    side_pair = {}
+    side_pair = defaultdict(list)
     for l, pl, pr in side_links:
-        side_pair[(pl.item, pr.item)] = (pl, pr)
+        side_pair[(pl.item, pr.item)].append((l, pl, pr))
     group_header = {}
     for t, row in enumerate(order):
         for n in row:
@@ -341,8 +341,8 @@ def layout(topo: Topology, title: str = "") -> Scene:
         if ia.dummy or ib.dummy:
             gap = 16
         if (a, b) in side_pair:
-            pl, pr = side_pair[(a, b)]
-            gap = max(gap, pl.lw + pr.lw + 4 * LBL_GAP + 12)
+            need = max(pl.lw + pr.lw + 4 * LBL_GAP + 12 for _, pl, pr in side_pair[(a, b)])
+            gap = max(gap, need)
         if ia.block != ib.block:
             for blk, it_ in ((ia.block, ia), (ib.block, ib)):
                 if blk.startswith("vlan:"):
@@ -432,9 +432,9 @@ def layout(topo: Topology, title: str = "") -> Scene:
         if abs(h.up_port.x - h.low_port.x) > 0.5:
             lo, hi = sorted((h.up_port.x, h.low_port.x))
             chan[items[h.upper].tier].append([lo, hi, ("hop", h)])
-    for l, pl, pr in u_links:
-        lo, hi = sorted((pl.x, pr.x))
-        chan[items[pl.item].tier].append([lo, hi, ("u", (l, pl, pr))])
+    for ul in u_links:
+        lo, hi = sorted((ul[1].x, ul[2].x))
+        chan[items[ul[1].item].tier].append([lo, hi, ("u", ul)])
     track_of = {}
     ntracks = defaultdict(int)
     for c, spans in chan.items():
@@ -461,6 +461,21 @@ def layout(topo: Topology, title: str = "") -> Scene:
         for (lo, hi, key), a in zip(spans, assign):
             track_of[id(key[1])] = best_perm[a]
         ntracks[c] = n
+
+    def _side_spacing(pairs):
+        return max((max(pl.lh, pr.lh) for _, pl, pr in pairs), default=0) + 8
+
+    for pairs in side_pair.values():
+        n = len(pairs)
+        if n < 2:
+            continue
+        d = _side_spacing(pairs)
+        top_need = 3 + max(pl.lh for _, pl, pr in pairs)
+        bot_need = 3 + max(pr.lh for _, pl, pr in pairs)
+        need = (n - 1) * d + top_need + bot_need + 8
+        for _, pl, pr in pairs:
+            items[pl.item].h = max(items[pl.item].h, need)
+            items[pr.item].h = max(items[pr.item].h, need)
 
     # ---- vertical placement ---------------------------------------------------
     has_groups = {t: any(items[n].block.startswith("vlan:") for n in row) for t, row in enumerate(order)}
@@ -550,9 +565,18 @@ def layout(topo: Topology, title: str = "") -> Scene:
             lids = [port_label(hs[0].up_port, l.id), port_label(hs[-1].low_port, l.id)]
             edges.append(Edge(id=l.id, points=pts, source=top_end.device, target=bot_end.device,
                               labels=[x for x in lids if x]))
+    side_yy = {}
+    for (a, b), pairs in side_pair.items():
+        ra, rb = node_rect[a], node_rect[b]
+        mid = max(ra.y, rb.y) + min(ra.h, rb.h) / 2
+        n = len(pairs)
+        d = _side_spacing(pairs) if n > 1 else 0
+        y0 = mid - (n - 1) * d / 2
+        for i, (l, _, _) in enumerate(pairs):
+            side_yy[l.id] = y0 + i * d
     for l, pl, pr in side_links:
         ra, rb = node_rect[pl.item], node_rect[pr.item]
-        yy = max(ra.y, rb.y) + min(ra.h, rb.h) / 2
+        yy = side_yy[l.id]
         pl.x, pl.y, pr.x, pr.y = ra.x2, yy, rb.x, yy
         lids = []
         if pl.lines:
@@ -727,11 +751,12 @@ def layout_inventory(topo: Topology, title: str = "") -> Scene:
 
     def sort_key(k):
         if k[0] == "vlan":
-            net = topo.vlans[k[1]].network
-            return (0, net or ipaddress.ip_network("0.0.0.0/0"))
+            net = topo.vlans[k[1]].network or ipaddress.ip_network("0.0.0.0/0")
+            return (0, net.version, net)
         if k[0] == "net":
-            return (0, ipaddress.ip_network(k[1]))
-        return (1, ipaddress.ip_network("0.0.0.0/0"))
+            net = ipaddress.ip_network(k[1])
+            return (0, net.version, net)
+        return (1, 4, ipaddress.ip_network("0.0.0.0/0"))
 
     title_lines = [TextLine(title or "Network inventory", 16, True, style.INK),
                    TextLine(f"{len(topo.devices)} devices · no links in input, grouped by subnet",

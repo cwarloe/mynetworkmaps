@@ -135,7 +135,7 @@ py tools\graphviz_baseline.py samples\redundant_network.csv -o out\graphviz
 ## Tests
 
 ```powershell
-pip install -e .[dev]
+pip install -e ".[dev]"
 pytest
 ```
 

@@ -60,3 +60,46 @@ def test_ha_pair_and_cross_link_are_side_by_side(samples):
     assert len(peers) == 2
     for e in peers:
         assert len(e.points) == 2 and e.points[0][1] == e.points[1][1]
+
+
+def test_reciprocal_local_port_labels_show_both_addresses(tmp_path):
+    p = tmp_path / "pair.csv"
+    p.write_text(
+        "name,role,address,interface,vlan,connected_to,local_port,remote_port\n"
+        "A,core,10.0.0.1/30,,,B,p1,p2\n"
+        "B,core,10.0.0.2/30,,,A,p2,p1\n",
+        encoding="utf-8",
+    )
+    topo = load_csv(p)
+    assert len(topo.links) == 1
+    assert {topo.links[0].a.address, topo.links[0].b.address} == {"10.0.0.1/30", "10.0.0.2/30"}
+    shown = {ln.text for lab in layout(topo).labels if lab.kind == "port" for ln in lab.lines}
+    assert "10.0.0.1/30" in shown and "10.0.0.2/30" in shown
+
+
+def test_inventory_mixed_ipv4_ipv6_lays_out(tmp_path):
+    p = tmp_path / "mixed.csv"
+    p.write_text("name,role,address\nPC-V4,pc,10.0.0.1/24\nPC-V6,pc,2001:db8::1/64\n",
+                 encoding="utf-8")
+    scene = layout(load_csv(p))
+    assert {n.id for n in scene.nodes} == {"PC-V4", "PC-V6"}
+
+
+def test_parallel_same_row_links_are_drawn_apart(tmp_path):
+    p = tmp_path / "parallel.csv"
+    p.write_text(
+        "name,role,address,interface,vlan,connected_to,local_port,remote_port\n"
+        "CORE-01,core,10.0.0.1/30,p1,,CORE-02,p1,p1\n"
+        "CORE-01,core,10.0.0.5/30,p2,,CORE-02,p2,p2\n"
+        "CORE-02,core,10.0.0.2/30,p1,,,\n"
+        "CORE-02,core,10.0.0.6/30,p2,,,\n",
+        encoding="utf-8",
+    )
+    topo = load_csv(p)
+    scene = layout(topo)
+    peers = [e for e in scene.edges]
+    assert len(peers) == 2
+    assert abs(peers[0].points[0][1] - peers[1].points[0][1]) > 1
+    assert is_clean(check(scene)), summary(check(scene))
+    shown = {ln.text for lab in scene.labels if lab.kind == "port" for ln in lab.lines}
+    assert {"p1", "p2", "10.0.0.1/30", "10.0.0.2/30", "10.0.0.5/30", "10.0.0.6/30"} <= shown

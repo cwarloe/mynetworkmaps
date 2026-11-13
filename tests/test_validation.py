@@ -274,4 +274,25 @@ def test_ipv4_link_local_on_a_routable_vlan_is_a_warning(tmp_path):
     assert "was not changed" in hits[0].message
     assert not any(f.code == "outside-subnet" for f in findings)
     assert not has_errors(findings)
+    assert "APIPA" in hits[0].message
+
+
+def test_hand_set_ipv4_link_local_is_not_called_apipa(tmp_path):
+    findings = validate(_load(
+        tmp_path, "handset.csv",
+        "Users,vlan,10.10.10.0/24,,10,,,,\n"
+        "PC,pc,169.254.1.10/24,eth0,10,,,,\n",
+    ))
+    hits = [f for f in findings if f.code == "link-local-in-vlan"]
+    assert hits and all(f.severity != ERROR for f in hits)
+    assert "by hand" in hits[0].message and "APIPA" not in hits[0].message
+    assert "was not changed" in hits[0].message
+
+
+def test_each_blank_header_column_keeps_its_value(tmp_path):
+    findings = validate(_load(
+        tmp_path, "blanks.csv", "PC,pc,10.10.10.5/24,lost1,\n",
+        header="name,role,address,,",
+    ))
+    assert any(f.code == "extra-fields" and "lost1" in f.message for f in findings)
 

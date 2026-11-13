@@ -1,0 +1,27 @@
+name,role,address,interface,vlan,connected_to,local_port,remote_port,notes
+Users,vlan,10.10.10.0/24,,10,,,,User access VLAN
+Servers,vlan,10.20.20.0/24,,20,,,,Server VLAN
+Mgmt,vlan,10.99.0.0/24,,99,,,,Device management VLAN
+EDGE-01,edge,203.0.113.2/30,Gi0/0,,,,,ISP uplink
+EDGE-01,edge,10.0.0.1/30,Gi0/1,,FW-01,Gi0/1,eth1,
+FW-01,firewall,10.0.0.2/30,eth1,,,,,outside
+FW-01,firewall,10.0.0.5/30,eth2,,CORE-01,eth2,Gi1/0/1,inside
+CORE-01,core,10.0.0.6/30,Gi1/0/1,,,,,
+CORE-01,core,10.0.0.9/30,Gi1/0/2,,DIST-01,Gi1/0/2,Gi1/0/1,
+CORE-01,core,10.0.0.13/30,Gi1/0/3,,DIST-02,Gi1/0/3,Gi1/0/1,
+DIST-01,distribution,10.0.0.10/30,Gi1/0/1,,,,,
+DIST-01,distribution,10.10.10.1/24,Vlan10,10,,,,Users gateway
+DIST-01,distribution,10.99.0.2/24,Vlan99,99,,,,
+DIST-01,distribution,,Gi1/0/2,,ACCESS-01,Gi1/0/2,Gi1/0/49,trunk 10 and 99
+DIST-02,distribution,10.0.0.14/30,Gi1/0/1,,,,,
+DIST-02,distribution,10.20.20.1/24,Vlan20,20,,,,Servers gateway
+DIST-02,distribution,10.99.0.3/24,Vlan99,99,,,,
+DIST-02,distribution,,Gi1/0/2,,ACCESS-02,Gi1/0/2,Gi1/0/49,trunk 20 and 99
+ACCESS-01,access,10.99.0.11/24,Vlan99,99,,,,
+ACCESS-01,access,,Gi1/0/1,99,,,,AP port
+ACCESS-01,access,,Gi1/0/2,10,,,,user port
+ACCESS-02,access,10.99.0.12/24,Vlan99,99,,,,
+ACCESS-02,access,,Gi1/0/1,20,,,,server port
+AP-01,ap,10.99.0.21/24,eth0,99,ACCESS-01,eth0,Gi1/0/1,
+PC-01,pc,10.10.10.50/24,eth0,10,ACCESS-01,eth0,Gi1/0/2,
+APP-01,server,10.20.20.10/24,eth0,20,ACCESS-02,eth0,Gi1/0/1,

@@ -89,7 +89,7 @@ If the file has no links at all, netdiag draws an inventory instead, grouped by 
 
 Any error stops the run with exit code 1 and nothing is drawn. The files in `samples\bad\` each trigger
 one of these on purpose. Warnings (`subnet-anycast`, `self-link`, `link-subnet-unchecked`, `no-address`,
-`unknown-column`) are reported, but the diagram is still drawn.
+`unknown-column`, `link-local-in-vlan`) are reported, but the diagram is still drawn.
 
 ## How the layout works
 

@@ -117,7 +117,14 @@ def validate(topo: Topology) -> list[Finding]:
         ll6 = ip.version == 6 and ip.ip.is_link_local
         if r.vlan and r.vlan in topo.vlans and not ll6:  # fe80::/10 sits beside the VLAN's global prefix
             vnet = topo.vlans[r.vlan].network
-            if vnet is not None and (ip.ip not in vnet or ip.network != vnet):
+            if (vnet is not None and ip.version == 4 and ip.ip.is_link_local
+                    and vnet.version == 4 and not vnet.is_link_local):
+                # RFC 3927 1.8: link-local hosts share the link with routable ones;
+                # 1.6/1.9 make a manual or DHCP 169.254 address suspect, not wrong
+                add(WARNING, "link-local-in-vlan", r.line,
+                    f"'{r.name}' {r.address} is IPv4 link-local (RFC 3927) on VLAN {r.vlan} ({vnet}); "
+                    f"this is likely an APIPA or failed DHCP lease, and the address was not changed")
+            elif vnet is not None and (ip.ip not in vnet or ip.network != vnet):
                 add(ERROR, "outside-subnet", r.line,
                     f"'{r.name}' {r.address} does not match VLAN {r.vlan} subnet {vnet}")
         key = (ip.ip,)

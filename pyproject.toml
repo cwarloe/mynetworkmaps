@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Turn a simple device CSV into an accurate, clean, editable network diagram"
 readme = "README.md"
 requires-python = ">=3.9"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
 dependencies = ["Pillow>=9.2"]
 
 [project.optional-dependencies]

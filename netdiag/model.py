@@ -48,6 +48,7 @@ class Row:
     local_port: str
     remote_port: str
     notes: str
+    extra: list = field(default_factory=list)  # fields past the last header column, kept verbatim
 
     @property
     def iface(self):
@@ -168,7 +169,7 @@ def load_csv(path) -> Topology:
             vals = {c: (raw.get(c) or "").strip() for c in COLUMNS}
             if not any(vals.values()):
                 continue
-            rows.append(Row(line=i, **vals))
+            rows.append(Row(line=i, **vals, extra=list(raw.get(None) or [])))
     return build_topology(rows, header_errors)
 
 
@@ -194,6 +195,20 @@ def build_topology(rows, header_errors=None) -> Topology:
         if key in seen:
             seen[key].lines.append(r.line)
             continue
+        # A reciprocal row that left remote_port blank is the same cable, not a second link.
+        matches = [l for l in links
+                   if _same_cable(l, r.name, local_port, r.connected_to, r.remote_port)]
+        if len(matches) == 1:
+            link = matches[0]
+            link.lines.append(r.line)
+            local_row = r if (not r.local_port or r.local_port == r.interface or not r.interface) \
+                else devices[r.name].row_for_port(local_port)
+            _fill_link_end(link, r.name, local_port, r.connected_to, r.remote_port,
+                           local_row, devices)
+            seen[key] = link
+            seen[frozenset([(link.a.device, link.a.port),
+                            (link.b.device, link.b.port)])] = link
+            continue
         remote_dev = devices.get(r.connected_to)
         remote_row = remote_dev.row_for_port(r.remote_port) if remote_dev else None
         local_row = r if (not r.local_port or r.local_port == r.interface or not r.interface) \
@@ -206,3 +221,31 @@ def build_topology(rows, header_errors=None) -> Topology:
         links.append(link)
     return Topology(rows=rows, devices=devices, vlans=vlans, links=links,
                     header_errors=header_errors or [])
+
+
+def _ports_compatible(a, b):
+    return (not a) or (not b) or a == b
+
+
+def _same_cable(link, name, local_port, peer, remote_port):
+    """True if this row is a (possibly underspecified) declaration of link."""
+    if name == peer or {name, peer} != {link.a.device, link.b.device}:
+        return False
+    loc, rem = (link.a, link.b) if link.a.device == name else (link.b, link.a)
+    return _ports_compatible(local_port, loc.port) and _ports_compatible(remote_port, rem.port)
+
+
+def _fill_link_end(link, name, local_port, peer, remote_port, local_row, devices):
+    """Fill a blank port or missing row from the reciprocal declaration. Never overwrites."""
+    mine, theirs = (link.a, link.b) if link.a.device == name else (link.b, link.a)
+    if not mine.port and local_port:
+        mine.port = local_port
+    if mine.row is None and local_row is not None:
+        mine.row = local_row
+    if not theirs.port and remote_port:
+        theirs.port = remote_port
+    if theirs.row is None and remote_port:
+        dev = devices.get(peer)
+        if dev:
+            theirs.row = dev.row_for_port(remote_port)
+

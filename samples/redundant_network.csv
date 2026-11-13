@@ -21,11 +21,14 @@ DIST-01,distribution,10.0.2.9/30,Gi1/0/48,,DIST-02,Gi1/0/48,Gi1/0/48,cross-link
 DIST-02,distribution,10.0.2.10/30,Gi1/0/48,,,,,
 DIST-01,distribution,10.99.0.2/24,Vlan99,99,,,,
 DIST-02,distribution,10.99.0.3/24,Vlan99,99,,,,
-ACCESS-01,access,10.99.0.11/24,Vlan99,99,DIST-01,Gi1/0/49,Gi1/0/2,uplink A
+ACCESS-01,access,10.99.0.11/24,Vlan99,99,,,,
+ACCESS-01,access,,Gi1/0/49,,DIST-01,Gi1/0/49,Gi1/0/2,uplink A
 ACCESS-01,access,,Gi1/0/50,,DIST-02,Gi1/0/50,Gi1/0/2,uplink B
-ACCESS-02,access,10.99.0.12/24,Vlan99,99,DIST-01,Gi1/0/49,Gi1/0/3,uplink A
+ACCESS-02,access,10.99.0.12/24,Vlan99,99,,,,
+ACCESS-02,access,,Gi1/0/49,,DIST-01,Gi1/0/49,Gi1/0/3,uplink A
 ACCESS-02,access,,Gi1/0/50,,DIST-02,Gi1/0/50,Gi1/0/3,uplink B
-ACCESS-03,access,10.99.0.13/24,Vlan99,99,DIST-01,Gi1/0/49,Gi1/0/4,uplink A
+ACCESS-03,access,10.99.0.13/24,Vlan99,99,,,,
+ACCESS-03,access,,Gi1/0/49,,DIST-01,Gi1/0/49,Gi1/0/4,uplink A
 ACCESS-03,access,,Gi1/0/50,,DIST-02,Gi1/0/50,Gi1/0/4,uplink B
 ACCESS-01,access,,Gi1/0/1,99,,,,AP port
 ACCESS-01,access,,Gi1/0/2,10,,,,

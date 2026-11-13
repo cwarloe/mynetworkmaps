@@ -5,7 +5,7 @@ from netdiag.validate import ERROR, has_errors, validate
 
 BAD = {
     "invalid_cidr.csv": {"invalid-cidr"},
-    "outside_subnet.csv": {"outside-subnet"},
+    "outside_subnet.csv": {"outside-subnet", "host-is-network"},
     "duplicate_ip.csv": {"duplicate-ip"},
     "dangling_link.csv": {"dangling-link"},
     "port_reused.csv": {"port-reused"},
@@ -69,3 +69,87 @@ def test_reciprocal_local_port_without_interface_is_checked(tmp_path):
     )
     findings = validate(load_csv(p))
     assert any(f.code == "outside-subnet" and "not in one subnet" in f.message for f in findings)
+
+
+HDR = "name,role,address,interface,vlan,connected_to,local_port,remote_port,notes"
+
+
+def _load(tmp_path, name, body, header=HDR):
+    p = tmp_path / name
+    p.write_text(header + "\n" + body, encoding="utf-8")
+    return load_csv(p)
+
+
+def test_ipv6_link_local_may_repeat_on_different_links(tmp_path):
+    topo = _load(tmp_path, "ll.csv",
+                 "R1,edge,fe80::1/64,Gi0/1,,SW1,Gi0/1,p1,\n"
+                 "SW1,access,fe80::2/64,p1,,,,,\n"
+                 "R2,edge,fe80::1/64,Gi0/1,,SW2,Gi0/1,p1,\n"
+                 "SW2,access,fe80::2/64,p1,,,,,\n")
+    findings = validate(topo)
+    assert not has_errors(findings), [str(f) for f in findings]
+    assert len(topo.links) == 2
+
+
+def test_reciprocal_row_with_blank_remote_port_is_one_link(tmp_path):
+    topo = _load(tmp_path, "rec.csv",
+                 "A,core,10.0.0.1/30,p1,,B,p1,p2,\n"
+                 "B,core,10.0.0.2/30,p2,,A,p2,,\n")
+    findings = validate(topo)
+    assert len(topo.links) == 1
+    assert topo.links[0].lines == [2, 3]
+    assert not any(f.code == "port-reused" for f in findings)
+    assert not has_errors(findings)
+
+
+def test_ipv6_subnet_router_anycast_is_warned_except_slash_127(tmp_path):
+    bad = validate(_load(tmp_path, "anycast.csv", "A,server,2001:db8:1::/64,eth0,,,,,\n"))
+    assert any(f.code == "subnet-anycast" and f.severity != ERROR for f in bad)
+    ok = validate(_load(tmp_path, "slash127.csv",
+                        "A,core,2001:db8::/127,p1,,B,p1,p1,\n"
+                        "B,core,2001:db8::1/127,p1,,,,,\n"))
+    assert not ok
+
+
+def test_ipv4_mapped_ipv6_is_rejected(tmp_path):
+    findings = validate(_load(tmp_path, "mapped.csv",
+                              "A,server,10.1.1.10/24,eth0,,,,,\n"
+                              "B,server,::ffff:10.1.1.10/120,eth0,,,,,\n"))
+    assert any(f.code == "invalid-cidr" and "IPv4-mapped" in f.message for f in findings)
+
+
+def test_unicode_digit_vlan_is_reported_not_a_crash(tmp_path):
+    findings = validate(_load(tmp_path, "vlan.csv", "A,pc,10.10.10.5/24,eth0,²,,,,\n"))
+    assert any(f.code == "invalid-vlan" for f in findings)
+
+
+def test_extra_csv_fields_are_reported(tmp_path):
+    topo = _load(tmp_path, "extra.csv", "A,pc,10.10.10.5/24,eth0,,,,,uplink, primary\n")
+    assert topo.devices["A"].rows[0].notes == "uplink"
+    assert any(f.code == "extra-fields" for f in validate(topo))
+
+
+def test_self_link_is_not_reported_as_port_reused(tmp_path):
+    findings = validate(_load(tmp_path, "self.csv", "A,core,10.0.0.1/30,p1,,A,p1,p1,\n"))
+    assert any(f.code == "self-link" for f in findings)
+    assert not any(f.code == "port-reused" for f in findings)
+
+
+def test_unresolved_remote_port_warns_that_subnet_was_not_checked(tmp_path):
+    findings = validate(_load(tmp_path, "typo.csv",
+                              "A,edge,10.0.0.1/30,p1,,B,p1,p9,\n"
+                              "B,edge,10.9.9.2/30,p1,,,,,\n"))
+    assert any(f.code == "link-subnet-unchecked" and f.severity != ERROR for f in findings)
+    assert not has_errors(findings)
+
+
+def test_host_is_network_and_link_prefix_mismatch_codes(tmp_path):
+    net = validate(_load(tmp_path, "net.csv", "A,pc,10.1.1.0/24,eth0,,,,,\n"))
+    assert any(f.code == "host-is-network" and "network address" in f.message for f in net)
+    bc = validate(_load(tmp_path, "bc.csv", "A,pc,10.1.1.255/24,eth0,,,,,\n"))
+    assert any(f.code == "host-is-broadcast" and "broadcast address" in f.message for f in bc)
+    mismatch = validate(_load(tmp_path, "pfx.csv",
+                              "A,edge,10.0.0.1/30,p1,,B,p1,p1,\n"
+                              "B,edge,10.0.0.2/24,p1,,,,,\n"))
+    assert any(f.code == "link-prefix-mismatch" and "different prefixes" in f.message for f in mismatch)
+

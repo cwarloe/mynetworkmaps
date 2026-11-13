@@ -75,16 +75,20 @@ If the file has no links at all, netdiag draws an inventory instead, grouped by 
 
 | code | problem |
 | --- | --- |
-| `invalid-cidr` | not a valid address, or no `/prefix` |
-| `outside-subnet` | address not in its VLAN's subnet, link ends in different subnets, or a network or broadcast address used as a host |
-| `duplicate-ip` | the same IP on two different interfaces |
+| `invalid-cidr` | not a valid address, no `/prefix`, or an IPv4-mapped IPv6 address (`::ffff:...`) |
+| `outside-subnet` | address not in its VLAN's subnet, or link ends in different subnets |
+| `host-is-network`, `host-is-broadcast` | a network or broadcast address used as a host |
+| `link-prefix-mismatch` | link ends share an address range but disagree on prefix length |
+| `duplicate-ip` | the same IP on two different interfaces (IPv6 link-local is unique per link only) |
 | `dangling-link` | `connected_to` names a device that is not in the file |
 | `port-reused` | one port is used by two different links |
 | `undefined-vlan` | a VLAN id with no `vlan` definition row |
+| `extra-fields` | more fields than the header (quote values that contain commas) |
 | `invalid-vlan`, `duplicate-vlan`, `unknown-role`, `role-conflict`, `missing-column` | what they say |
 
 Any error stops the run with exit code 1 and nothing is drawn. The files in `samples\bad\` each trigger
-one of these on purpose.
+one of these on purpose. Warnings (`subnet-anycast`, `self-link`, `link-subnet-unchecked`, `no-address`)
+are reported, but the diagram is still drawn.
 
 ## How the layout works
 

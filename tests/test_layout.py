@@ -103,3 +103,17 @@ def test_parallel_same_row_links_are_drawn_apart(tmp_path):
     assert is_clean(check(scene)), summary(check(scene))
     shown = {ln.text for lab in scene.labels if lab.kind == "port" for ln in lab.lines}
     assert {"p1", "p2", "10.0.0.1/30", "10.0.0.2/30", "10.0.0.5/30", "10.0.0.6/30"} <= shown
+
+
+def test_svi_address_is_shown_on_the_device_not_the_trunk(samples):
+    topo = load_csv(samples / "redundant_network.csv")
+    trunks = [l for l in topo.links if l.a.port == "Gi1/0/49" or l.b.port == "Gi1/0/49"]
+    assert len(trunks) == 3
+    for l in trunks:
+        assert not l.a.address and not l.b.address
+    scene = layout(topo)
+    shown = {ln.text for lab in scene.labels if lab.kind == "port" for ln in lab.lines}
+    assert "10.99.0.11/24" not in shown
+    access = next(n for n in scene.nodes if n.id == "ACCESS-01")
+    assert any("10.99.0.11/24" in ln.text for ln in access.lines)
+

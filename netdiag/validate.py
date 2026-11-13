@@ -22,7 +22,7 @@ class Finding:
 
     def __str__(self):
         where = f"line {self.line}: " if self.line else ""
-        return f"{self.severity.upper():7} {self.code:18} {where}{self.message}"
+        return f"{self.severity.upper():7} {self.code:22} {where}{self.message}"
 
 
 def validate(topo: Topology) -> list[Finding]:
@@ -61,8 +61,11 @@ def validate(topo: Topology) -> list[Finding]:
                     f"'{r.name}' address '{r.address}' has no prefix length (write it as CIDR, e.g. 10.0.0.1/24)")
             elif parse_cidr(r.address) is None:
                 add(ERROR, "invalid-cidr", r.line, f"'{r.name}' address '{r.address}' is not a valid CIDR")
+        if r.extra:
+            add(ERROR, "extra-fields", r.line,
+                f"row has {len(r.extra)} more field(s) than the header: {r.extra!r} (quote values that contain commas)")
         if r.vlan:
-            if not r.vlan.isdigit() or not 1 <= int(r.vlan) <= 4094:
+            if not (r.vlan.isascii() and r.vlan.isdigit()) or not 1 <= int(r.vlan) <= 4094:
                 add(ERROR, "invalid-vlan", r.line, f"VLAN id '{r.vlan}' must be a number from 1 to 4094")
 
     # --- VLAN definitions ----------------------------------------------------
@@ -90,8 +93,17 @@ def validate(topo: Topology) -> list[Finding]:
         net = ip.network
         if net.version == 4 and net.prefixlen < 31 and ip.ip in (net.network_address, net.broadcast_address):
             kind = "network" if ip.ip == net.network_address else "broadcast"
-            add(ERROR, "outside-subnet", r.line,
+            add(ERROR, f"host-is-{kind}", r.line,
                 f"'{r.name}' {r.address} is the {kind} address of {net}, not a usable host address")
+        elif net.version == 6 and net.prefixlen < 127 and ip.ip == net.network_address:
+            # RFC 4291 2.6.1 Subnet-Router anycast; RFC 6164 exempts /127
+            add(WARNING, "subnet-anycast", r.line,
+                f"'{r.name}' {r.address} is the Subnet-Router anycast address of {net}, not a host address")
+        if ip.version == 6 and ip.ip.ipv4_mapped is not None:
+            add(ERROR, "invalid-cidr", r.line,
+                f"'{r.name}' {r.address} is an IPv4-mapped address (::ffff:0:0/96), which is not assigned to interfaces; "
+                f"write {ip.ip.ipv4_mapped} instead")
+            continue
         if r.vlan and r.vlan in topo.vlans:
             vnet = topo.vlans[r.vlan].network
             if vnet is not None and (ip.ip not in vnet or ip.network != vnet):
@@ -99,6 +111,8 @@ def validate(topo: Topology) -> list[Finding]:
                     f"'{r.name}' {r.address} does not match VLAN {r.vlan} subnet {vnet}")
         key = (ip.ip,)
         port = r.interface or r.local_port
+        if ip.version == 6 and ip.ip.is_link_local:
+            continue  # fe80::/10 only has to be unique on its own link (RFC 4291 2.5.6)
         if key in ip_owner and ip_owner[key][:2] != (r.name, port):
             other = ip_owner[key]
             add(ERROR, "duplicate-ip", r.line,
@@ -116,14 +130,27 @@ def validate(topo: Topology) -> list[Finding]:
             continue
         if link.a.device == link.b.device:
             add(WARNING, "self-link", line, f"'{link.a.device}' is connected to itself")
-        for end in (link.a, link.b):
-            if end.port:
-                port_use[(end.device, end.port)].append(link)
+        for dev_port in {(e.device, e.port) for e in (link.a, link.b) if e.port}:
+            port_use[dev_port].append(link)
         ia, ib = parse_cidr(link.a.address), parse_cidr(link.b.address)
+        if ia is not None and ib is not None and ia.ip == ib.ip and ia.version == 6 and ia.ip.is_link_local:
+            add(ERROR, "duplicate-ip", line,
+                f"{ia.ip} is on both ends of link {link.a.device}<->{link.b.device}")
         if ia is not None and ib is not None and ia.network != ib.network:
-            add(ERROR, "outside-subnet", line,
-                f"link {link.a.device} {link.a.port} ({link.a.address}) to {link.b.device} "
-                f"{link.b.port} ({link.b.address}) is not in one subnet")
+            if ia.ip in ib.network or ib.ip in ia.network:
+                add(ERROR, "link-prefix-mismatch", line,
+                    f"link {link.a.device} {link.a.port} ({link.a.address}) to {link.b.device} "
+                    f"{link.b.port} ({link.b.address}) ends use different prefixes "
+                    f"(/{ia.network.prefixlen} vs /{ib.network.prefixlen})")
+            else:
+                add(ERROR, "outside-subnet", line,
+                    f"link {link.a.device} {link.a.port} ({link.a.address}) to {link.b.device} "
+                    f"{link.b.port} ({link.b.address}) is not in one subnet")
+        for near, far in ((link.a, link.b), (link.b, link.a)):
+            if far.port and far.row is None and near.address:
+                add(WARNING, "link-subnet-unchecked", line,
+                    f"{far.device} port {far.port} is not described in this file, so the subnet of "
+                    f"{near.device} {near.port} ({near.address}) could not be checked against it")
     for (dev, port), links in port_use.items():
         if len(links) > 1:
             others = ", ".join(f"{l.a.device}<->{l.b.device} (line {l.lines[0]})" for l in links)

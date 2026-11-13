@@ -121,9 +121,14 @@ def validate(topo: Topology) -> list[Finding]:
                     and vnet.version == 4 and not vnet.is_link_local):
                 # RFC 3927 1.8: link-local hosts share the link with routable ones;
                 # 1.6/1.9 make a manual or DHCP 169.254 address suspect, not wrong
+                self_assigned = (ip.network.prefixlen == 16 and
+                                 ipaddress.ip_address("169.254.1.0") <= ip.ip <= ipaddress.ip_address("169.254.254.255"))
+                why = ("it looks self-assigned (APIPA), which usually means DHCP failed" if self_assigned else
+                       "RFC 3927 self-assignment only uses 169.254.1.0-169.254.254.255 on the unsubnetted /16, "
+                       "so this was likely set by hand, which RFC 3927 says SHOULD NOT be done")
                 add(WARNING, "link-local-in-vlan", r.line,
                     f"'{r.name}' {r.address} is IPv4 link-local (RFC 3927) on VLAN {r.vlan} ({vnet}); "
-                    f"this is likely an APIPA or failed DHCP lease, and the address was not changed")
+                    f"{why}. The address was not changed")
             elif vnet is not None and (ip.ip not in vnet or ip.network != vnet):
                 add(ERROR, "outside-subnet", r.line,
                     f"'{r.name}' {r.address} does not match VLAN {r.vlan} subnet {vnet}")

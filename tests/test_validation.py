@@ -262,3 +262,11 @@ def test_link_local_on_untagged_switch_ports_is_a_warning(tmp_path):
     assert dups and all(f.severity != ERROR for f in dups)
     assert not has_errors(findings)
 
+
+def test_each_blank_header_column_keeps_its_value(tmp_path):
+    findings = validate(_load(
+        tmp_path, "blanks.csv", "PC,pc,10.10.10.5/24,lost1,\n",
+        header="name,role,address,,",
+    ))
+    assert any(f.code == "extra-fields" and "lost1" in f.message for f in findings)
+

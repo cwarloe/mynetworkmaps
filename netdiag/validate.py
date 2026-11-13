@@ -31,6 +31,9 @@ def validate(topo: Topology) -> list[Finding]:
 
     for msg in topo.header_errors:
         add(ERROR, "missing-column", 1, msg)
+    for col in topo.unknown_columns:
+        add(WARNING, "unknown-column", 1,
+            f"column '{col}' is not a known field and was ignored")
     if topo.header_errors:
         return out
 
@@ -52,16 +55,21 @@ def validate(topo: Topology) -> list[Finding]:
         if r.address:
             if r.role.lower() == VLAN_ROLE:
                 try:
-                    ipaddress.ip_network(r.address, strict=True)
+                    vnet = ipaddress.ip_network(r.address, strict=True)
                 except ValueError as exc:
                     add(ERROR, "invalid-cidr", r.line,
                         f"VLAN {r.vlan or '?'} subnet '{r.address}' is not a valid network ({exc})")
+                else:
+                    if vnet.version == 6 and vnet.prefixlen >= 96 and vnet.network_address.ipv4_mapped is not None:
+                        add(ERROR, "invalid-cidr", r.line,
+                            f"VLAN {r.vlan or '?'} subnet '{r.address}' is IPv4-mapped (::ffff:0:0/96); "
+                            f"write the IPv4 subnet instead")
             elif "/" not in r.address:
                 add(ERROR, "invalid-cidr", r.line,
                     f"'{r.name}' address '{r.address}' has no prefix length (write it as CIDR, e.g. 10.0.0.1/24)")
             elif parse_cidr(r.address) is None:
                 add(ERROR, "invalid-cidr", r.line, f"'{r.name}' address '{r.address}' is not a valid CIDR")
-        if r.extra:
+        if any(x.strip() for x in r.extra):
             add(ERROR, "extra-fields", r.line,
                 f"row has {len(r.extra)} more field(s) than the header: {r.extra!r} (quote values that contain commas)")
         if r.vlan:
@@ -104,7 +112,8 @@ def validate(topo: Topology) -> list[Finding]:
                 f"'{r.name}' {r.address} is an IPv4-mapped address (::ffff:0:0/96), which is not assigned to interfaces; "
                 f"write {ip.ip.ipv4_mapped} instead")
             continue
-        if r.vlan and r.vlan in topo.vlans:
+        ll6 = ip.version == 6 and ip.ip.is_link_local
+        if r.vlan and r.vlan in topo.vlans and not ll6:  # fe80::/10 sits beside the VLAN's global prefix
             vnet = topo.vlans[r.vlan].network
             if vnet is not None and (ip.ip not in vnet or ip.network != vnet):
                 add(ERROR, "outside-subnet", r.line,
@@ -133,9 +142,6 @@ def validate(topo: Topology) -> list[Finding]:
         for dev_port in {(e.device, e.port) for e in (link.a, link.b) if e.port}:
             port_use[dev_port].append(link)
         ia, ib = parse_cidr(link.a.address), parse_cidr(link.b.address)
-        if ia is not None and ib is not None and ia.ip == ib.ip and ia.version == 6 and ia.ip.is_link_local:
-            add(ERROR, "duplicate-ip", line,
-                f"{ia.ip} is on both ends of link {link.a.device}<->{link.b.device}")
         if ia is not None and ib is not None and ia.network != ib.network:
             if ia.ip in ib.network or ib.ip in ia.network:
                 add(ERROR, "link-prefix-mismatch", line,
@@ -156,6 +162,33 @@ def validate(topo: Topology) -> list[Finding]:
             others = ", ".join(f"{l.a.device}<->{l.b.device} (line {l.lines[0]})" for l in links)
             add(ERROR, "port-reused", links[1].lines[0],
                 f"'{dev}' port {port} is used by {len(links)} links: {others}")
+
+    # --- link-local uniqueness per L2 segment (RFC 4291 2.5.6, RFC 4862 5.4) ----
+    segs = defaultdict(set)  # id(row) -> {("link", id) | ("vlan", vid)}
+    for link in topo.links:
+        for near, far in ((link.a, link.b), (link.b, link.a)):
+            if near.row is not None:
+                segs[id(near.row)].add(("link", link.id))
+                if far.row is not None and far.row.vlan and not far.row.address:
+                    segs[id(near.row)].add(("vlan", far.row.vlan))  # plugged into a switch access port
+    ll_owner = {}
+    for r in topo.rows:
+        ip = parse_cidr(r.address)
+        if r.role.lower() == VLAN_ROLE or ip is None or ip.version != 6 or not ip.ip.is_link_local:
+            continue
+        mine = set(segs[id(r)]) | ({("vlan", r.vlan)} if r.vlan else set())
+        for seg in sorted(mine):
+            other = ll_owner.setdefault((ip.ip, seg), r)
+            if other.name != r.name:
+                where = f"VLAN {seg[1]}" if seg[0] == "vlan" else "link"
+                add(ERROR, "duplicate-ip", r.line,
+                    f"link-local {ip.ip} on '{r.name}' is already used by '{other.name}' "
+                    f"(line {other.line}) on the same {where}")
+                break
+
+    for (line, ids) in topo.ambiguous:
+        add(ERROR, "ambiguous-link", line,
+            f"this row could describe any of links {', '.join(ids)}; fill in local_port and remote_port")
 
     for dev in topo.devices.values():
         if not any(r.address for r in dev.rows):

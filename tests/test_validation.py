@@ -153,3 +153,62 @@ def test_host_is_network_and_link_prefix_mismatch_codes(tmp_path):
                               "B,edge,10.0.0.2/24,p1,,,,,\n"))
     assert any(f.code == "link-prefix-mismatch" and "different prefixes" in f.message for f in mismatch)
 
+
+def test_link_local_duplicate_on_a_shared_vlan_is_reported(tmp_path):
+    findings = validate(_load(
+        tmp_path, "llseg.csv",
+        "Users,vlan,10.10.10.0/24,,10,,,,\n"
+        "SW1,access,10.10.10.2/24,Vlan10,10,,,,\n"
+        "SW1,access,,p1,10,,,,\n"
+        "SW1,access,,p2,10,,,,\n"
+        "R1,edge,fe80::1/64,Gi0/1,,SW1,Gi0/1,p1,\n"
+        "R2,edge,fe80::1/64,Gi0/1,,SW1,Gi0/1,p2,\n",
+    ))
+    dups = [f for f in findings if f.code == "duplicate-ip"]
+    assert any(f.line == 7 for f in dups)
+    assert any("VLAN 10" in f.message for f in dups)
+
+
+def test_link_local_on_a_vlan_interface_is_not_outside_the_global_prefix(tmp_path):
+    findings = validate(_load(
+        tmp_path, "llvlan.csv",
+        "Users,vlan,2001:db8:10::/64,,10,,,,\n"
+        "R1,edge,2001:db8:10::1/64,Vlan10,10,,,,\n"
+        "R1,edge,fe80::1/64,Vlan10,10,,,,\n",
+    ))
+    assert not has_errors(findings), [str(f) for f in findings]
+    assert not any(f.code == "outside-subnet" for f in findings)
+
+
+def test_ambiguous_reciprocal_row_is_reported_not_turned_into_a_link(tmp_path):
+    topo = _load(
+        tmp_path, "amb.csv",
+        "A,core,,p1,,B,p1,,\n"
+        "A,core,,p2,,B,p2,,\n"
+        "B,core,,p7,,A,p7,,\n",
+    )
+    assert len(topo.links) == 2
+    findings = validate(topo)
+    assert any(f.code == "ambiguous-link" and f.line == 4 for f in findings)
+
+
+def test_ipv4_mapped_vlan_subnet_is_rejected(tmp_path):
+    findings = validate(_load(tmp_path, "vmap.csv", "Users,vlan,::ffff:10.10.10.0/120,,10,,,,\n"))
+    assert any(f.code == "invalid-cidr" and "IPv4-mapped" in f.message for f in findings)
+
+
+def test_empty_trailing_field_is_not_extra_fields(tmp_path):
+    findings = validate(_load(tmp_path, "trail.csv", "PC,pc,10.10.10.5/24,eth0,,,,,,\n"))
+    assert not any(f.code == "extra-fields" for f in findings)
+    assert not has_errors(findings)
+
+
+def test_unknown_header_column_is_warned(tmp_path):
+    topo = _load(tmp_path, "site.csv", "PC,pc,10.10.10.5/24,Boise\n",
+                 header="name,role,address,site")
+    findings = validate(topo)
+    assert any(f.code == "unknown-column" and "site" in f.message and f.severity != ERROR
+               for f in findings)
+    assert not has_errors(findings)
+    assert topo.devices["PC"].rows[0].address == "10.10.10.5/24"
+

@@ -124,6 +124,8 @@ class Topology:
     vlans: dict           # vid -> Vlan
     links: list
     header_errors: list = field(default_factory=list)
+    ambiguous: list = field(default_factory=list)  # (line, [link ids]) rows that match more than one link
+    unknown_columns: list = field(default_factory=list)
 
     def device_vlan(self, dev: Device):
         """VLAN id an endpoint belongs to: explicit vlan column first, else the
@@ -164,16 +166,17 @@ def load_csv(path) -> Topology:
         reader.fieldnames = header
         header_errors = [f"missing required column '{c}'" for c in REQUIRED_COLUMNS
                          if c not in header]
+        unknown_columns = [h for h in header if h and h not in COLUMNS]
         rows = []
         for i, raw in enumerate(reader, start=2):
             vals = {c: (raw.get(c) or "").strip() for c in COLUMNS}
             if not any(vals.values()):
                 continue
             rows.append(Row(line=i, **vals, extra=list(raw.get(None) or [])))
-    return build_topology(rows, header_errors)
+    return build_topology(rows, header_errors, unknown_columns)
 
 
-def build_topology(rows, header_errors=None) -> Topology:
+def build_topology(rows, header_errors=None, unknown_columns=None) -> Topology:
     devices: dict[str, Device] = {}
     vlans: dict[str, Vlan] = {}
     for r in rows:
@@ -186,6 +189,7 @@ def build_topology(rows, header_errors=None) -> Topology:
         dev.rows.append(r)
 
     links: list[Link] = []
+    ambiguous: list = []
     seen: dict = {}
     for r in rows:
         if r.role.lower() == VLAN_ROLE or not r.connected_to or not r.name:
@@ -198,6 +202,9 @@ def build_topology(rows, header_errors=None) -> Topology:
         # A reciprocal row that left remote_port blank is the same cable, not a second link.
         matches = [l for l in links
                    if _same_cable(l, r.name, local_port, r.connected_to, r.remote_port)]
+        if len(matches) > 1:
+            ambiguous.append((r.line, [l.id for l in matches]))
+            continue  # never guess which cable this is, and never add another one
         if len(matches) == 1:
             link = matches[0]
             link.lines.append(r.line)
@@ -220,7 +227,8 @@ def build_topology(rows, header_errors=None) -> Topology:
         seen[key] = link
         links.append(link)
     return Topology(rows=rows, devices=devices, vlans=vlans, links=links,
-                    header_errors=header_errors or [])
+                    header_errors=header_errors or [], ambiguous=ambiguous,
+                    unknown_columns=unknown_columns or [])
 
 
 def _ports_compatible(a, b):

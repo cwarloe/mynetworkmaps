@@ -79,13 +79,13 @@ If the file has no links at all, netdiag draws an inventory instead, grouped by 
 | `outside-subnet` | address not in its VLAN's subnet, or link ends in different subnets |
 | `host-is-network`, `host-is-broadcast` | a network or broadcast address used as a host |
 | `link-prefix-mismatch` | link ends share an address range but disagree on prefix length |
-| `duplicate-ip` | the same IP on two different interfaces (IPv6 link-local is unique per VLAN or link, not across the file) |
+| `duplicate-ip` | the same IP on two different interfaces (IPv6 and IPv4 link-local are unique per VLAN or link, not across the file) |
 | `dangling-link` | `connected_to` names a device that is not in the file |
 | `port-reused` | one port is used by two different links |
 | `ambiguous-link` | a row could describe more than one existing cable; fill in the ports |
 | `undefined-vlan` | a VLAN id with no `vlan` definition row |
 | `extra-fields` | more fields than the header (quote values that contain commas) |
-| `invalid-vlan`, `duplicate-vlan`, `unknown-role`, `role-conflict`, `missing-column` | what they say |
+| `invalid-vlan`, `duplicate-vlan`, `duplicate-column`, `unknown-role`, `role-conflict`, `missing-column` | what they say |
 
 Any error stops the run with exit code 1 and nothing is drawn. The files in `samples\bad\` each trigger
 one of these on purpose. Warnings (`subnet-anycast`, `self-link`, `link-subnet-unchecked`, `no-address`,

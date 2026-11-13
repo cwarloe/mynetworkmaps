@@ -126,6 +126,7 @@ class Topology:
     header_errors: list = field(default_factory=list)
     ambiguous: list = field(default_factory=list)  # (line, [link ids]) rows that match more than one link
     unknown_columns: list = field(default_factory=list)
+    duplicate_columns: list = field(default_factory=list)
 
     def device_vlan(self, dev: Device):
         """VLAN id an endpoint belongs to: explicit vlan column first, else the
@@ -167,16 +168,19 @@ def load_csv(path) -> Topology:
         header_errors = [f"missing required column '{c}'" for c in REQUIRED_COLUMNS
                          if c not in header]
         unknown_columns = [h for h in header if h and h not in COLUMNS]
+        duplicate_columns = [h for h in sorted(set(header)) if h and header.count(h) > 1]
         rows = []
         for i, raw in enumerate(reader, start=2):
             vals = {c: (raw.get(c) or "").strip() for c in COLUMNS}
             if not any(vals.values()):
                 continue
-            rows.append(Row(line=i, **vals, extra=list(raw.get(None) or [])))
-    return build_topology(rows, header_errors, unknown_columns)
+            extra = ([raw[""]] if raw.get("") else []) + list(raw.get(None) or [])
+            rows.append(Row(line=i, **vals, extra=extra))
+    return build_topology(rows, header_errors, unknown_columns, duplicate_columns)
 
 
-def build_topology(rows, header_errors=None, unknown_columns=None) -> Topology:
+def build_topology(rows, header_errors=None, unknown_columns=None,
+                   duplicate_columns=None) -> Topology:
     devices: dict[str, Device] = {}
     vlans: dict[str, Vlan] = {}
     for r in rows:
@@ -228,7 +232,8 @@ def build_topology(rows, header_errors=None, unknown_columns=None) -> Topology:
         links.append(link)
     return Topology(rows=rows, devices=devices, vlans=vlans, links=links,
                     header_errors=header_errors or [], ambiguous=ambiguous,
-                    unknown_columns=unknown_columns or [])
+                    unknown_columns=unknown_columns or [],
+                    duplicate_columns=duplicate_columns or [])
 
 
 def _ports_compatible(a, b):

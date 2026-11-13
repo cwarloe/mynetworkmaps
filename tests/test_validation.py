@@ -212,3 +212,53 @@ def test_unknown_header_column_is_warned(tmp_path):
     assert not has_errors(findings)
     assert topo.devices["PC"].rows[0].address == "10.10.10.5/24"
 
+
+def test_ipv4_link_local_may_repeat_on_different_ha_pairs(tmp_path):
+    findings = validate(_load(
+        tmp_path, "ha2.csv",
+        "FW-1A,firewall,169.254.1.1/30,eth3,,FW-1B,eth3,eth3,\n"
+        "FW-1B,firewall,169.254.1.2/30,eth3,,,,,\n"
+        "FW-2A,firewall,169.254.1.1/30,eth3,,FW-2B,eth3,eth3,\n"
+        "FW-2B,firewall,169.254.1.2/30,eth3,,,,,\n",
+    ))
+    assert not has_errors(findings), [str(f) for f in findings]
+    assert not any(f.code == "duplicate-ip" for f in findings)
+
+
+def test_one_ha_pair_with_ipv4_link_local_is_clean(tmp_path):
+    findings = validate(_load(
+        tmp_path, "ha1.csv",
+        "FW-1A,firewall,169.254.1.1/30,eth3,,FW-1B,eth3,eth3,\n"
+        "FW-1B,firewall,169.254.1.2/30,eth3,,,,,\n",
+    ))
+    assert not findings
+
+
+def test_duplicate_header_column_is_reported(tmp_path):
+    topo = _load(tmp_path, "dupcol.csv", "PC,pc,10.10.10.5/24,10.10.10.6/24\n",
+                 header="name,role,address,address")
+    findings = validate(topo)
+    assert any(f.code == "duplicate-column" and "address" in f.message for f in findings)
+    assert not any(f.code == "missing-column" for f in findings)
+
+
+def test_value_under_a_blank_header_is_reported(tmp_path):
+    findings = validate(_load(
+        tmp_path, "blank.csv", "PC,pc,10.10.10.5/24,lostvalue\n",
+        header="name,role,address,",
+    ))
+    assert any(f.code == "extra-fields" and "lostvalue" in f.message for f in findings)
+
+
+def test_link_local_on_untagged_switch_ports_is_a_warning(tmp_path):
+    findings = validate(_load(
+        tmp_path, "untagged.csv",
+        "SW1,access,,p1,,,,,\n"
+        "SW1,access,,p2,,,,,\n"
+        "R1,edge,fe80::1/64,Gi0/1,,SW1,Gi0/1,p1,\n"
+        "R2,edge,fe80::1/64,Gi0/1,,SW1,Gi0/1,p2,\n",
+    ))
+    dups = [f for f in findings if f.code == "duplicate-ip"]
+    assert dups and all(f.severity != ERROR for f in dups)
+    assert not has_errors(findings)
+

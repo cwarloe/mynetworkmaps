@@ -31,10 +31,12 @@ def validate(topo: Topology) -> list[Finding]:
 
     for msg in topo.header_errors:
         add(ERROR, "missing-column", 1, msg)
+    for col in topo.duplicate_columns:
+        add(ERROR, "duplicate-column", 1, f"column '{col}' appears more than once")
     for col in topo.unknown_columns:
         add(WARNING, "unknown-column", 1,
             f"column '{col}' is not a known field and was ignored")
-    if topo.header_errors:
+    if topo.header_errors or topo.duplicate_columns:
         return out
 
     # --- row level: required values, roles, CIDR syntax ---------------------
@@ -120,8 +122,8 @@ def validate(topo: Topology) -> list[Finding]:
                     f"'{r.name}' {r.address} does not match VLAN {r.vlan} subnet {vnet}")
         key = (ip.ip,)
         port = r.interface or r.local_port
-        if ip.version == 6 and ip.ip.is_link_local:
-            continue  # fe80::/10 only has to be unique on its own link (RFC 4291 2.5.6)
+        if ip.ip.is_link_local:  # fe80::/10 and 169.254/16 (RFC 3927) are link-scoped
+            continue
         if key in ip_owner and ip_owner[key][:2] != (r.name, port):
             other = ip_owner[key]
             add(ERROR, "duplicate-ip", r.line,
@@ -171,17 +173,21 @@ def validate(topo: Topology) -> list[Finding]:
                 segs[id(near.row)].add(("link", link.id))
                 if far.row is not None and far.row.vlan and not far.row.address:
                     segs[id(near.row)].add(("vlan", far.row.vlan))  # plugged into a switch access port
+                elif (far.device in topo.devices and topo.devices[far.device].tier == "access"
+                      and (far.row is None or (not far.row.vlan and not far.row.address))):
+                    segs[id(near.row)].add(("switch", far.device))  # untagged port, VLAN not stated
     ll_owner = {}
     for r in topo.rows:
         ip = parse_cidr(r.address)
-        if r.role.lower() == VLAN_ROLE or ip is None or ip.version != 6 or not ip.ip.is_link_local:
+        if r.role.lower() == VLAN_ROLE or ip is None or not ip.ip.is_link_local:
             continue
         mine = set(segs[id(r)]) | ({("vlan", r.vlan)} if r.vlan else set())
         for seg in sorted(mine):
             other = ll_owner.setdefault((ip.ip, seg), r)
             if other.name != r.name:
-                where = f"VLAN {seg[1]}" if seg[0] == "vlan" else "link"
-                add(ERROR, "duplicate-ip", r.line,
+                where = {"vlan": f"VLAN {seg[1]}",
+                         "switch": f"switch {seg[1]} (untagged ports, VLAN not stated)"}.get(seg[0], "link")
+                add(WARNING if seg[0] == "switch" else ERROR, "duplicate-ip", r.line,
                     f"link-local {ip.ip} on '{r.name}' is already used by '{other.name}' "
                     f"(line {other.line}) on the same {where}")
                 break

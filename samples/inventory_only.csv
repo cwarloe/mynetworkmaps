@@ -1,0 +1,11 @@
+name,role,address,interface,vlan,connected_to,local_port,remote_port,notes
+Users,vlan,10.10.10.0/24,,10,,,,
+Servers,vlan,10.20.20.0/24,,20,,,,
+GW-01,edge,10.10.10.1/24,Gi0/1,10,,,,
+GW-01,edge,10.20.20.1/24,Gi0/2,20,,,,
+PC-01,pc,10.10.10.50/24,eth0,10,,,,
+PC-02,pc,10.10.10.51/24,eth0,10,,,,
+PRN-01,printer,10.10.10.80/24,eth0,10,,,,
+APP-01,server,10.20.20.10/24,eth0,20,,,,
+NAS-01,server,10.20.20.20/24,eth0,20,,,,
+CAM-01,pc,192.168.50.20/24,eth0,,,,,camera on its own subnet

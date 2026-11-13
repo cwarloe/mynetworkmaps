@@ -1,0 +1,42 @@
+name,role,address,interface,vlan,connected_to,local_port,remote_port,notes
+Users,vlan,10.10.10.0/24,,10,,,,User access VLAN
+Servers,vlan,10.20.20.0/24,,20,,,,Server VLAN
+Mgmt,vlan,10.99.0.0/24,,99,,,,Device management VLAN
+EDGE-01,edge,198.51.100.2/30,Gi0/0,,,,,ISP uplink
+EDGE-01,edge,10.0.0.1/30,Gi0/1,,FW-01A,Gi0/1,eth1,
+EDGE-01,edge,10.0.0.5/30,Gi0/2,,FW-01B,Gi0/2,eth1,
+FW-01A,firewall,10.0.0.2/30,eth1,,,,,HA primary
+FW-01B,firewall,10.0.0.6/30,eth1,,,,,HA secondary
+FW-01A,firewall,169.254.1.1/30,eth3,,FW-01B,eth3,eth3,HA heartbeat
+FW-01B,firewall,169.254.1.2/30,eth3,,,,,
+FW-01A,firewall,10.0.1.1/30,eth2,,CORE-01,eth2,Gi1/0/1,
+FW-01B,firewall,10.0.1.5/30,eth2,,CORE-01,eth2,Gi1/0/2,
+CORE-01,core,10.0.1.2/30,Gi1/0/1,,,,,
+CORE-01,core,10.0.1.6/30,Gi1/0/2,,,,,
+CORE-01,core,10.0.2.1/30,Gi1/0/3,,DIST-01,Gi1/0/3,Gi1/0/1,
+CORE-01,core,10.0.2.5/30,Gi1/0/4,,DIST-02,Gi1/0/4,Gi1/0/1,
+DIST-01,distribution,10.0.2.2/30,Gi1/0/1,,,,,
+DIST-02,distribution,10.0.2.6/30,Gi1/0/1,,,,,
+DIST-01,distribution,10.0.2.9/30,Gi1/0/48,,DIST-02,Gi1/0/48,Gi1/0/48,cross-link
+DIST-02,distribution,10.0.2.10/30,Gi1/0/48,,,,,
+DIST-01,distribution,10.99.0.2/24,Vlan99,99,,,,
+DIST-02,distribution,10.99.0.3/24,Vlan99,99,,,,
+ACCESS-01,access,10.99.0.11/24,Vlan99,99,,,,
+ACCESS-01,access,,Gi1/0/49,,DIST-01,Gi1/0/49,Gi1/0/2,uplink A
+ACCESS-01,access,,Gi1/0/50,,DIST-02,Gi1/0/50,Gi1/0/2,uplink B
+ACCESS-02,access,10.99.0.12/24,Vlan99,99,,,,
+ACCESS-02,access,,Gi1/0/49,,DIST-01,Gi1/0/49,Gi1/0/3,uplink A
+ACCESS-02,access,,Gi1/0/50,,DIST-02,Gi1/0/50,Gi1/0/3,uplink B
+ACCESS-03,access,10.99.0.13/24,Vlan99,99,,,,
+ACCESS-03,access,,Gi1/0/49,,DIST-01,Gi1/0/49,Gi1/0/4,uplink A
+ACCESS-03,access,,Gi1/0/50,,DIST-02,Gi1/0/50,Gi1/0/4,uplink B
+ACCESS-01,access,,Gi1/0/1,99,,,,AP port
+ACCESS-01,access,,Gi1/0/2,10,,,,
+ACCESS-02,access,,Gi1/0/2,10,,,,
+ACCESS-03,access,,Gi1/0/1,20,,,,
+ACCESS-03,access,,Gi1/0/2,20,,,,
+AP-01,ap,10.99.0.21/24,eth0,99,ACCESS-01,eth0,Gi1/0/1,
+PC-01,pc,10.10.10.50/24,eth0,10,ACCESS-01,eth0,Gi1/0/2,
+PC-02,pc,10.10.10.51/24,eth0,10,ACCESS-02,eth0,Gi1/0/2,
+APP-01,server,10.20.20.10/24,eth0,20,ACCESS-03,eth0,Gi1/0/1,
+APP-02,server,10.20.20.11/24,eth0,20,ACCESS-03,eth0,Gi1/0/2,

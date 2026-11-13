@@ -1,0 +1,3 @@
+name,role,address,interface,vlan,connected_to,local_port,remote_port,notes
+Users,vlan,10.10.10.0/24,,10,,,,
+PC-01,pc,10.30.30.5/24,eth0,30,,,,

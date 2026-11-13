@@ -164,7 +164,10 @@ def load_csv(path) -> Topology:
     with path.open(newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
         header = [h.strip().lower() for h in (reader.fieldnames or [])]
-        reader.fieldnames = header
+        # give every blank header its own key so DictReader can't collapse them into one
+        blank_keys = [f"\0blank{i}" for i, h in enumerate(header) if not h]
+        it = iter(blank_keys)
+        reader.fieldnames = [h or next(it) for h in header]
         header_errors = [f"missing required column '{c}'" for c in REQUIRED_COLUMNS
                          if c not in header]
         unknown_columns = [h for h in header if h and h not in COLUMNS]
@@ -174,7 +177,7 @@ def load_csv(path) -> Topology:
             vals = {c: (raw.get(c) or "").strip() for c in COLUMNS}
             if not any(vals.values()):
                 continue
-            extra = ([raw[""]] if raw.get("") else []) + list(raw.get(None) or [])
+            extra = [raw[k] for k in blank_keys if raw.get(k)] + list(raw.get(None) or [])
             rows.append(Row(line=i, **vals, extra=extra))
     return build_topology(rows, header_errors, unknown_columns, duplicate_columns)
 
